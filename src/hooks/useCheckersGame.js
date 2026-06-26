@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 // 0: empty, 1: red, 2: black, 3: red king, 4: black king
 const INITIAL_BOARD = Array(8).fill(null).map(() => Array(8).fill(0));
@@ -14,11 +14,39 @@ for (let r = 0; r < 8; r++) {
 }
 
 export const useCheckersGame = () => {
-  const [board, setBoard] = useState(INITIAL_BOARD);
-  const [turn, setTurn] = useState(1); // 1 = red, 2 = black
+  const [board, setBoard] = useState(() => {
+    const saved = localStorage.getItem('checkers_board');
+    return saved ? JSON.parse(saved) : INITIAL_BOARD;
+  });
+  const [turn, setTurn] = useState(() => {
+    const saved = localStorage.getItem('checkers_turn');
+    return saved ? JSON.parse(saved) : 1;
+  }); // 1 = red, 2 = black
   const [selectedPiece, setSelectedPiece] = useState(null); // { r, c }
   const [validMoves, setValidMoves] = useState([]); // Array of { r, c, isJump, jumpR, jumpC }
-  const [winner, setWinner] = useState(null);
+  const [winner, setWinner] = useState(() => {
+    const saved = localStorage.getItem('checkers_winner');
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  // Calculate captured pieces dynamically
+  let currentRed = 0;
+  let currentBlack = 0;
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      if (board[r][c] === 1 || board[r][c] === 3) currentRed++;
+      if (board[r][c] === 2 || board[r][c] === 4) currentBlack++;
+    }
+  }
+  const redCaptured = 12 - currentBlack;
+  const blackCaptured = 12 - currentRed;
+
+  // Sync state to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('checkers_board', JSON.stringify(board));
+    localStorage.setItem('checkers_turn', JSON.stringify(turn));
+    localStorage.setItem('checkers_winner', JSON.stringify(winner));
+  }, [board, turn, winner]);
 
   const getValidMoves = (r, c, b, currentTurn, requireJump = false) => {
     const piece = b[r][c];
@@ -172,11 +200,15 @@ export const useCheckersGame = () => {
   };
 
   const resetGame = () => {
-    setBoard(INITIAL_BOARD.map(row => [...row]));
+    const initial = INITIAL_BOARD.map(row => [...row]);
+    setBoard(initial);
     setTurn(1);
     setSelectedPiece(null);
     setValidMoves([]);
     setWinner(null);
+    localStorage.removeItem('checkers_board');
+    localStorage.removeItem('checkers_turn');
+    localStorage.removeItem('checkers_winner');
   };
 
   return {
@@ -185,6 +217,8 @@ export const useCheckersGame = () => {
     selectedPiece,
     validMoves,
     winner,
+    redCaptured,
+    blackCaptured,
     handleSquareClick,
     resetGame
   };

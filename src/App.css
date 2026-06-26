@@ -200,3 +200,64 @@ h1 {
   outline: none;
   border-color: var(--button-bg);
 }
+
+/* Expansion Features: Timers & Stats */
+.game-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  max-width: 800px;
+  margin-bottom: 2rem;
+}
+
+.player-stats {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  background-color: var(--card-bg);
+  padding: 1rem;
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  min-width: 120px;
+}
+
+.player-stats.red-stats {
+  border-bottom: 4px solid #c92a2a;
+}
+
+.player-stats.black-stats {
+  border-bottom: 4px solid #111;
+}
+
+.timer {
+  font-family: var(--mono, monospace);
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--button-bg);
+}
+
+.captured {
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.time-selector {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  font-size: 1.2rem;
+}
+
+.time-selector select {
+  padding: 0.5rem 1rem;
+  font-size: 1.1rem;
+  border-radius: 8px;
+  border: 2px solid var(--border);
+  background-color: var(--card-bg);
+  cursor: pointer;
+  font-family: var(--font-body);
+}

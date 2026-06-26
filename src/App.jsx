@@ -1,16 +1,52 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useCheckersGame } from './hooks/useCheckersGame';
 import { useMultiplayer } from './hooks/useMultiplayer';
+import { useTimer } from './hooks/useTimer';
 import Board from './components/Board';
-import { RotateCcw, Home, Copy, Check } from 'lucide-react';
+import { RotateCcw, Home, Copy, Check, Clock } from 'lucide-react';
 import './App.css';
 
 function App() {
-  const [currentView, setCurrentView] = useState('home'); // home, offline, online-menu, online-host, online-join, game
+  const [currentView, setCurrentView] = useState(() => {
+    return localStorage.getItem('checkers_current_view') || 'home';
+  }); 
   const [copied, setCopied] = useState(false);
   const [joinId, setJoinId] = useState('');
+  
+  // Timer settings
+  const [selectedTime, setSelectedTime] = useState(300); // Default 5 mins
 
-  const { board, turn, selectedPiece, validMoves, winner, handleSquareClick, resetGame } = useCheckersGame();
+  const { board, turn, selectedPiece, validMoves, winner, redCaptured, blackCaptured, handleSquareClick, resetGame } = useCheckersGame();
+
+  // Handle timeout
+  const handleTimeout = useCallback((losingTurn) => {
+    // If timer runs out, the other person wins
+    alert(`${losingTurn === 1 ? 'Red' : 'Black'} ran out of time!`);
+    resetGame();
+    setCurrentView('home');
+  }, [resetGame]);
+
+  const {
+    redTimeFormatted,
+    blackTimeFormatted,
+    setIsActive,
+    resetTimers,
+    setTimersDirectly
+  } = useTimer(selectedTime, handleTimeout, turn);
+
+  // Sync view to local storage to persist across refresh
+  useEffect(() => {
+    localStorage.setItem('checkers_current_view', currentView);
+  }, [currentView]);
+
+  // Activate timer only when in game
+  useEffect(() => {
+    if ((currentView === 'offline' || currentView === 'game-online') && !winner) {
+      setIsActive(true);
+    } else {
+      setIsActive(false);
+    }
+  }, [currentView, winner, setIsActive]);
 
   const handleRemoteMove = useCallback((r, c) => {
     handleSquareClick(r, c);
@@ -18,7 +54,8 @@ function App() {
 
   const handleRemoteReset = useCallback(() => {
     resetGame();
-  }, [resetGame]);
+    resetTimers(selectedTime);
+  }, [resetGame, resetTimers, selectedTime]);
 
   const {
     peerId,
@@ -34,12 +71,7 @@ function App() {
   const localPlayer = currentView === 'game-online' ? (isHost ? 1 : 2) : turn;
 
   const handleLocalSquareClick = (r, c) => {
-    // Prevent clicking if it's an online game and not your turn
-    if (currentView === 'game-online' && turn !== localPlayer) {
-      // Allow remote player clicks to sync selection if they are just sending raw clicks
-      // But wait, the local player shouldn't be able to click AT ALL if it's not their turn.
-      return; 
-    }
+    if (currentView === 'game-online' && turn !== localPlayer) return; 
     
     handleSquareClick(r, c);
     
@@ -50,6 +82,7 @@ function App() {
 
   const handleLocalReset = () => {
     resetGame();
+    resetTimers(selectedTime);
     if (currentView === 'game-online') {
       sendReset();
     }
@@ -57,8 +90,12 @@ function App() {
 
   const handleHome = () => {
     resetGame();
+    resetTimers(selectedTime);
     disconnect();
     setCurrentView('home');
+    localStorage.removeItem('checkers_board');
+    localStorage.removeItem('checkers_turn');
+    localStorage.removeItem('checkers_winner');
   };
 
   const copyToClipboard = () => {
@@ -67,10 +104,15 @@ function App() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Auto-transition to game when connected
   if (connectionStatus === 'connected' && (currentView === 'online-host' || currentView === 'online-join')) {
     setCurrentView('game-online');
+    resetTimers(selectedTime);
   }
+
+  const startGameOffline = () => {
+    resetTimers(selectedTime);
+    setCurrentView('offline');
+  };
 
   return (
     <div className="container">
@@ -78,8 +120,20 @@ function App() {
         <div className="home-screen">
           <h1>Classic Checkers</h1>
           <p className="subtitle">Outsmart your opponent in this timeless strategy game.</p>
+          
+          <div className="time-selector">
+            <Clock size={20} />
+            <span>Time Control: </span>
+            <select value={selectedTime} onChange={(e) => setSelectedTime(Number(e.target.value))}>
+              <option value={180}>3 Minutes</option>
+              <option value={300}>5 Minutes</option>
+              <option value={600}>10 Minutes</option>
+              <option value={Infinity}>No Timer</option>
+            </select>
+          </div>
+
           <div className="button-group">
-            <button className="primary-btn" onClick={() => setCurrentView('offline')}>Local Multiplayer</button>
+            <button className="primary-btn" onClick={startGameOffline}>Local Multiplayer</button>
             <button className="primary-btn" onClick={() => setCurrentView('online-menu')}>Play Online</button>
           </div>
         </div>
@@ -89,6 +143,18 @@ function App() {
         <div className="home-screen">
           <h1>Play Online</h1>
           <p className="subtitle">Create a room or join a friend's room.</p>
+          
+          <div className="time-selector" style={{ marginBottom: '2rem' }}>
+            <Clock size={20} />
+            <span>Time Control (Host Only): </span>
+            <select value={selectedTime} onChange={(e) => setSelectedTime(Number(e.target.value))}>
+              <option value={180}>3 Minutes</option>
+              <option value={300}>5 Minutes</option>
+              <option value={600}>10 Minutes</option>
+              <option value={Infinity}>No Timer</option>
+            </select>
+          </div>
+
           <div className="button-group">
             <button className="primary-btn" onClick={() => { hostRoom(); setCurrentView('online-host'); }}>Create Room</button>
             <button className="secondary-btn" onClick={() => setCurrentView('online-join')}>Join Room</button>
@@ -138,24 +204,35 @@ function App() {
       {(currentView === 'offline' || currentView === 'game-online') && (
         <div className="game-screen">
           <header className="game-header">
-            <h2>{currentView === 'offline' ? 'Local Multiplayer' : 'Online Multiplayer'}</h2>
-            {currentView === 'game-online' && (
-              <p style={{ margin: 0, opacity: 0.8 }}>
-                You are playing as {localPlayer === 1 ? 'Red' : 'Black'}. 
-                {connectionStatus === 'disconnected' && ' (Opponent Disconnected)'}
-              </p>
-            )}
-            <div className={`turn-indicator ${turn === 1 ? 'red-turn' : 'black-turn'}`}>
-              {winner ? (
-                <span>Game Over - {winner === 1 ? 'Red' : 'Black'} Wins!</span>
-              ) : (
-                <span>Current Turn: {turn === 1 ? 'Red' : 'Black'}</span>
+            <div className="player-stats black-stats">
+              <div className="timer">{blackTimeFormatted}</div>
+              <div className="captured">🔴 x {redCaptured}</div>
+            </div>
+
+            <div className="game-status">
+              <h2>{currentView === 'offline' ? 'Local Multiplayer' : 'Online Multiplayer'}</h2>
+              {currentView === 'game-online' && (
+                <p style={{ margin: 0, opacity: 0.8 }}>
+                  You are playing as {localPlayer === 1 ? 'Red' : 'Black'}. 
+                  {connectionStatus === 'disconnected' && ' (Opponent Disconnected)'}
+                </p>
               )}
+              <div className={`turn-indicator ${turn === 1 ? 'red-turn' : 'black-turn'}`}>
+                {winner ? (
+                  <span>Game Over - {winner === 1 ? 'Red' : 'Black'} Wins!</span>
+                ) : (
+                  <span>Current Turn: {turn === 1 ? 'Red' : 'Black'}</span>
+                )}
+              </div>
+            </div>
+
+            <div className="player-stats red-stats">
+              <div className="timer">{redTimeFormatted}</div>
+              <div className="captured">⚫ x {blackCaptured}</div>
             </div>
           </header>
 
           <main className="game-main">
-            {/* Flip board visually for the Black player so they always move "up" */}
             <div style={{ width: '100%', transform: localPlayer === 2 ? 'rotate(180deg)' : 'none', transition: 'transform 0.5s ease' }}>
               <Board 
                 board={board} 
